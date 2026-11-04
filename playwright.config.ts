@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "real/**",
   workers: 1, // Comparten el backend de prueba en memoria.
   timeout: 90_000,
   expect: { timeout: 15_000 },

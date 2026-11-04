@@ -103,7 +103,13 @@ Corre tests unitarios (formatos, cálculos) y prueba las migraciones reales en P
 npm run test:e2e
 ```
 
-Compila y corre los flujos en Chrome (necesita Chrome instalado) contra `e2e/fake-backend.mjs`, un backend en memoria que imita a Supabase. Cubre registro, onboarding, presupuesto, PDF, WhatsApp, agenda, fotos y el modo offline. Como el backend es de prueba, **no reemplaza** probar contra un proyecto real.
+Compila y corre los flujos en Chrome (necesita Chrome instalado) contra `e2e/fake-backend.mjs`, un backend en memoria que imita a Supabase. Cubre registro, onboarding, presupuesto, PDF, WhatsApp, agenda, fotos y el modo offline. No necesita Docker.
+
+```bash
+npm run test:e2e:real
+```
+
+Corre los flujos contra el Supabase local de verdad (hace falta `npx supabase start` antes). Además comprueba el aislamiento entre usuarios por HTTP, los límites de los buckets, el link firmado de WhatsApp, la caída de la API con `docker stop` y la recuperación de contraseña con el mail real en Mailpit. No cubre el login con Google, que necesita credenciales propias.
 
 ## Deploy
 

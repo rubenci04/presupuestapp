@@ -181,7 +181,7 @@ function send(res, status, json) {
   res.end(json === undefined ? undefined : JSON.stringify(json));
 }
 
-createServer((req, res) => {
+const api = createServer((req, res) => {
   const chunks = [];
   req.on("data", (chunk) => chunks.push(chunk));
   req.on("end", () => {
@@ -207,7 +207,9 @@ createServer((req, res) => {
     if (url.pathname.startsWith("/storage/v1/")) return storage(req, res, url, body);
     return send(res, 404, {});
   });
-}).listen(API_PORT);
+});
+// E2E_APP_ONLY: sirve solo la app, para correr contra un Supabase real.
+if (!process.env.E2E_APP_ONLY) api.listen(API_PORT);
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
