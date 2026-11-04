@@ -86,10 +86,10 @@ npm run preview
 
 | Variable | Dónde se obtiene |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase > Project Settings > API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase > Project Settings > API (clave pública; los datos los protege RLS) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase > Connect |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase > Project Settings > API Keys: la clave publishable o la `anon` (públicas; los datos los protege RLS) |
 
-Se incrustan en el build: si las cambiás, hay que volver a compilar. **Nunca** uses acá la clave `service_role`.
+Se incrustan en el build: si las cambiás, hay que volver a compilar. **Nunca** uses acá la clave secret o `service_role`.
 
 ### Tests
 
@@ -112,6 +112,8 @@ npm run test:e2e:real
 Corre los flujos contra el Supabase local de verdad (hace falta `npx supabase start` antes). Además comprueba el aislamiento entre usuarios por HTTP, los límites de los buckets, el link firmado de WhatsApp, la caída de la API con `docker stop` y la recuperación de contraseña con el mail real en Mailpit. No cubre el login con Google, que necesita credenciales propias.
 
 ## Deploy
+
+Para hacerlo solo desde los paneles web, sin terminal, seguí [docs/DEPLOY_PASO_A_PASO.md](docs/DEPLOY_PASO_A_PASO.md). Abajo está la versión con la CLI de Supabase.
 
 ### 1. Supabase (producción)
 
@@ -146,9 +148,9 @@ Como el sitio es estático, sirve cualquier host. Para un producto que se va a u
 1. **Workers & Pages > Create > Pages > Connect to Git** y elegí este repo.
 2. Configuración de build:
    - Framework preset: `Next.js (Static HTML Export)`
-   - Build command: `npm run build`
+   - Build command: `npx next build`
    - Output directory: `out`
-3. Agregá las dos variables de entorno.
+3. Agregá las dos variables de entorno. La versión de Node sale de `.node-version`.
 
 ### Alternativa: Vercel
 
