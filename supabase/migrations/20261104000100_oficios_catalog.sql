@@ -1,0 +1,53 @@
+-- Catálogo de oficios (45). Va en una migración y no en seed.sql porque también tiene
+-- que existir en producción, y `supabase db push` no aplica seeds.
+insert into public.oficios (name, description, unit, category) values
+  -- Construcción y obra
+  ('Albañil', 'Mampostería, revoques, contrapisos y reformas en general', 'm²', 'Construcción y obra'),
+  ('Oficial de obra', 'Oficial para tareas generales de construcción', 'jornada', 'Construcción y obra'),
+  ('Peón de obra', 'Ayudante para tareas de apoyo en obra', 'jornada', 'Construcción y obra'),
+  ('Yesero / Escayolista', 'Enlucidos de yeso, molduras y terminaciones', 'm²', 'Construcción y obra'),
+  ('Durlockero', 'Tabiques, cielorrasos y revestimientos en placa de yeso', 'm²', 'Construcción y obra'),
+  ('Techista / Zinguero', 'Techos, chapas, canaletas y zinguería', 'm²', 'Construcción y obra'),
+  ('Impermeabilizador', 'Membranas y tratamientos contra humedad y filtraciones', 'm²', 'Construcción y obra'),
+  ('Colocador de cerámicos / Azulejista', 'Colocación de cerámicos, porcelanatos y azulejos', 'm²', 'Construcción y obra'),
+  ('Colocador de pisos (parquet, flotante, vinílico)', 'Colocación y reparación de pisos de madera, flotantes y vinílicos', 'm²', 'Construcción y obra'),
+  ('Pintor de obra', 'Pintura de interiores, exteriores y frentes', 'm²', 'Construcción y obra'),
+  ('Pintor decorativo', 'Efectos, texturas y terminaciones decorativas', 'm²', 'Construcción y obra'),
+  ('Empapelador', 'Colocación de papel y revestimientos vinílicos de pared', 'm²', 'Construcción y obra'),
+  -- Instalaciones
+  ('Plomero', 'Instalación y reparación de agua, desagües y sanitarios', 'unidad', 'Instalaciones'),
+  ('Gasista matriculado', 'Instalaciones de gas, artefactos y pruebas de hermeticidad', 'unidad', 'Instalaciones'),
+  ('Electricista', 'Instalaciones eléctricas, tableros y reparaciones', 'unidad', 'Instalaciones'),
+  ('Instalador de aire acondicionado', 'Instalación y mantenimiento de equipos split y centrales', 'unidad', 'Instalaciones'),
+  ('Técnico en refrigeración', 'Reparación de heladeras, freezers y cámaras de frío', 'unidad', 'Instalaciones'),
+  ('Instalador de calefacción', 'Radiadores, losa radiante y calderas', 'unidad', 'Instalaciones'),
+  ('Instalador de termotanques / calefones', 'Instalación y recambio de termotanques y calefones', 'unidad', 'Instalaciones'),
+  ('Instalador de sistemas de riego', 'Riego por aspersión y goteo para jardines y parques', 'm²', 'Instalaciones'),
+  ('Instalador de alarmas / CCTV', 'Alarmas, cámaras de seguridad y porteros', 'unidad', 'Instalaciones'),
+  -- Herrería y metal
+  ('Herrero', 'Trabajos a medida en hierro y reparaciones', 'unidad', 'Herrería y metal'),
+  ('Soldador', 'Soldadura eléctrica, MIG y TIG en taller y a domicilio', 'hora', 'Herrería y metal'),
+  ('Cerrajero', 'Aperturas, cambio de cerraduras y copias de llaves', 'unidad', 'Herrería y metal'),
+  ('Fabricante de rejas y portones', 'Rejas, portones y cerramientos a medida', 'm²', 'Herrería y metal'),
+  ('Estructurista metálico', 'Estructuras, tinglados y entrepisos metálicos', 'm²', 'Herrería y metal'),
+  -- Carpintería y madera
+  ('Carpintero', 'Trabajos generales en madera y reparaciones', 'unidad', 'Carpintería y madera'),
+  ('Carpintero de obra (encofrados)', 'Encofrados para hormigón y trabajos de obra', 'm²', 'Carpintería y madera'),
+  ('Carpintero de muebles', 'Muebles a medida y restauración', 'unidad', 'Carpintería y madera'),
+  ('Instalador de puertas y ventanas', 'Colocación y ajuste de aberturas', 'unidad', 'Carpintería y madera'),
+  ('Colocador de placares', 'Armado e instalación de placares y vestidores', 'ml', 'Carpintería y madera'),
+  -- Otros oficios frecuentes
+  ('Destapador / Limpieza de cloacas', 'Destapación de cañerías, cloacas y pozos', 'unidad', 'Otros oficios frecuentes'),
+  ('Técnico en electrodomésticos', 'Reparación de lavarropas, cocinas y pequeños electrodomésticos', 'unidad', 'Otros oficios frecuentes'),
+  ('Técnico en TV / antenas', 'Reparación de televisores e instalación de antenas', 'unidad', 'Otros oficios frecuentes'),
+  ('Jardinero / Paisajista', 'Mantenimiento y diseño de jardines', 'jornada', 'Otros oficios frecuentes'),
+  ('Poda y limpieza de terrenos', 'Poda de árboles, desmalezado y limpieza de lotes', 'm²', 'Otros oficios frecuentes'),
+  ('Limpieza de tanques de agua', 'Limpieza y desinfección de tanques y cisternas', 'unidad', 'Otros oficios frecuentes'),
+  ('Colocador de vidrios / Cristalero', 'Corte y colocación de vidrios, espejos y mamparas', 'm²', 'Otros oficios frecuentes'),
+  ('Polarizador de vidrios', 'Polarizado de ventanas y vidrios de vehículos', 'm²', 'Otros oficios frecuentes'),
+  ('Marmolero', 'Mesadas, escaleras y revestimientos en mármol y granito', 'ml', 'Otros oficios frecuentes'),
+  ('Yesero de cielorrasos', 'Cielorrasos aplicados y suspendidos de yeso', 'm²', 'Otros oficios frecuentes'),
+  ('Instalador de paneles solares (básico)', 'Paneles y termotanques solares para vivienda', 'unidad', 'Otros oficios frecuentes'),
+  ('Técnico en bombas de agua', 'Instalación y reparación de bombas y presurizadores', 'unidad', 'Otros oficios frecuentes'),
+  ('Reparador de persianas', 'Reparación de persianas, cintas y motores', 'unidad', 'Otros oficios frecuentes'),
+  ('Colocador de toldos', 'Instalación y reparación de toldos y cerramientos de lona', 'm²', 'Otros oficios frecuentes');
