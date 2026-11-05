@@ -1,8 +1,9 @@
 import { budgetTotals, computeTotals, lineTotal, saleUnitPrice } from "./budget-calc";
-import { db } from "./db";
+import { LOCAL_LOGO_MARK, LOGO_KEY, NEXT_NUMBER_KEY } from "./config";
+import { db, getKv } from "./db";
+import { resizeImage } from "./files";
 import { todayISO } from "./format";
-import { markDirty, rowPk, syncNow } from "./sync";
-import { BUCKETS, getSupabase } from "./supabase";
+import { markDirty, rowPk } from "./sync";
 import type {
   Budget,
   BudgetItem,
@@ -17,23 +18,53 @@ import type {
   Professional,
 } from "./types";
 
-// Todas las escrituras de la app pasan por acá: IndexedDB + outbox en una transacción, y
-// después un sync en segundo plano. La UI se actualiza sola porque lee con useLiveQuery.
-
-function afterWrite() {
-  void syncNow();
-}
+// Todas las escrituras de la app pasan por acá y van solo a IndexedDB: no hay cuenta ni
+// nube. markDirty queda como gancho para un respaldo futuro (hoy no hace nada).
+// La UI se actualiza sola porque lee con useLiveQuery.
 
 export const newId = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
 
 export async function getProfessional(): Promise<Professional> {
   const professional = await db.professionals.toCollection().first();
-  if (!professional) throw new Error("Todavía no se cargó tu perfil. Revisá tu conexión.");
+  if (!professional) throw new Error("Todavía no se cargó tu perfil.");
   return professional;
 }
 
 // ---------------------------------------------------------------- Perfil
+
+export interface WelcomeInput {
+  brand_name: string;
+  phone: string;
+  primary_color: string;
+}
+
+/** Crea el perfil de este equipo con los datos de la pantalla de bienvenida. */
+export async function createLocalProfile(input: WelcomeInput, logo: Blob | null): Promise<Professional> {
+  const professional: Professional = {
+    id: newId(),
+    user_id: "local",
+    name: "",
+    last_name: "",
+    phone: input.phone,
+    cuit: null,
+    address: "",
+    zone: "",
+    logo_url: logo ? LOCAL_LOGO_MARK : null,
+    brand_name: input.brand_name,
+    primary_color: input.primary_color.toUpperCase(),
+    footer_text: "",
+    onboarded_at: nowIso(),
+    created_at: nowIso(),
+  };
+  await db.transaction("rw", db.professionals, db.kv, db.outbox, async () => {
+    await db.professionals.clear();
+    await db.professionals.add(professional);
+    if (logo) await db.kv.put({ key: LOGO_KEY, value: logo });
+    await markDirty("professionals", professional.id, "upsert");
+  });
+  return professional;
+}
 
 export async function saveProfile(changes: Partial<Professional>) {
   const professional = await getProfessional();
@@ -41,19 +72,27 @@ export async function saveProfile(changes: Partial<Professional>) {
     await db.professionals.update(professional.id, changes);
     await markDirty("professionals", professional.id, "upsert");
   });
-  afterWrite();
 }
 
-/** Requiere conexión: el logo se valida en el servidor (2 MB, PNG/JPG). */
-export async function uploadLogo(file: File): Promise<string> {
+export async function getLogoBlob(): Promise<Blob | null> {
+  return ((await getKv<Blob>(LOGO_KEY)) as Blob | undefined) ?? null;
+}
+
+export async function setLogo(logo: Blob | null) {
   const professional = await getProfessional();
-  const extension = file.type === "image/png" ? "png" : "jpg";
-  // Nombre nuevo en cada subida para que el cache del navegador no sirva el logo viejo.
-  const path = `${professional.user_id}/logo-${Date.now()}.${extension}`;
-  const storage = getSupabase().storage.from(BUCKETS.logos);
-  const { error } = await storage.upload(path, file, { contentType: file.type });
-  if (error) throw error;
-  return storage.getPublicUrl(path).data.publicUrl;
+  await db.transaction("rw", db.professionals, db.kv, db.outbox, async () => {
+    if (logo) await db.kv.put({ key: LOGO_KEY, value: logo });
+    else await db.kv.delete(LOGO_KEY);
+    await db.professionals.update(professional.id, { logo_url: logo ? LOCAL_LOGO_MARK : null });
+    await markDirty("professionals", professional.id, "upsert");
+  });
+}
+
+const MAX_LOGO_SIDE = 600;
+
+/** Achica el logo para que el PDF y la copia de seguridad no pesen de más. */
+export async function prepareLogo(file: File): Promise<Blob> {
+  return resizeImage(file, MAX_LOGO_SIDE, file.type === "image/png" ? "image/png" : "image/jpeg", 0.9);
 }
 
 export async function setOficios(oficioIds: string[]) {
@@ -74,7 +113,6 @@ export async function setOficios(oficioIds: string[]) {
       await markDirty("professional_oficios", rowPk("professional_oficios", { ...row }), "upsert");
     }
   });
-  afterWrite();
 }
 
 export async function addCustomOficio(name: string, unit: string): Promise<Oficio> {
@@ -91,7 +129,6 @@ export async function addCustomOficio(name: string, unit: string): Promise<Ofici
     await db.oficios.add(oficio);
     await markDirty("oficios", oficio.id, "upsert");
   });
-  afterWrite();
   return oficio;
 }
 
@@ -109,7 +146,6 @@ export async function saveClient(input: ClientInput, id?: string): Promise<Clien
     await db.clients.put(client);
     await markDirty("clients", client.id, "upsert");
   });
-  afterWrite();
   return client;
 }
 
@@ -121,7 +157,6 @@ export async function deleteClient(id: string): Promise<boolean> {
     await db.clients.delete(id);
     await markDirty("clients", id, "delete");
   });
-  afterWrite();
   return true;
 }
 
@@ -166,26 +201,39 @@ export function buildItems(budgetId: string, items: ItemInput[]): BudgetItem[] {
   });
 }
 
+/**
+ * Siguiente número correlativo (1, 2, 3...). Usa un contador aparte y no "el mayor + 1":
+ * si se borra el último presupuesto, su número no se vuelve a usar, porque ya pudo
+ * haberse mandado al cliente. Llamar dentro de una transacción que incluya budgets y kv.
+ */
+async function takeBudgetNumber(): Promise<number> {
+  const stored = await getKv<number>(NEXT_NUMBER_KEY);
+  const highest = (await db.budgets.orderBy("number").last())?.number ?? 0;
+  const number = Math.max(stored ?? 1, highest + 1);
+  await db.kv.put({ key: NEXT_NUMBER_KEY, value: number + 1 });
+  return number;
+}
+
 export async function saveBudget(input: BudgetInput, itemInputs: ItemInput[], id?: string): Promise<Budget> {
   const professional = await getProfessional();
   const existing = id ? await db.budgets.get(id) : undefined;
   const budgetId = existing?.id ?? newId();
   const items = buildItems(budgetId, itemInputs);
   const totals = budgetTotals(computeTotals(items, input.iva_percent));
-  const budget: Budget = existing
-    ? { ...existing, ...input, ...totals }
-    : {
-        ...input,
-        ...totals,
-        id: budgetId,
-        professional_id: professional.id,
-        number: null,
-        status: "draft",
-        pdf_url: null,
-        created_at: nowIso(),
-      };
 
-  await db.transaction("rw", db.budgets, db.budget_items, db.outbox, async () => {
+  return db.transaction("rw", db.budgets, db.budget_items, db.kv, db.outbox, async () => {
+    const budget: Budget = existing
+      ? { ...existing, ...input, ...totals }
+      : {
+          ...input,
+          ...totals,
+          id: budgetId,
+          professional_id: professional.id,
+          number: await takeBudgetNumber(),
+          status: "draft",
+          pdf_url: null,
+          created_at: nowIso(),
+        };
     await db.budgets.put(budget);
     await markDirty("budgets", budget.id, "upsert");
     const keep = new Set(items.map((item) => item.id));
@@ -198,9 +246,8 @@ export async function saveBudget(input: BudgetInput, itemInputs: ItemInput[], id
     }
     await db.budget_items.bulkPut(items);
     for (const item of items) await markDirty("budget_items", item.id, "upsert");
+    return budget;
   });
-  afterWrite();
-  return budget;
 }
 
 export async function setBudgetStatus(id: string, status: BudgetStatus) {
@@ -208,36 +255,31 @@ export async function setBudgetStatus(id: string, status: BudgetStatus) {
     await db.budgets.update(id, { status });
     await markDirty("budgets", id, "upsert");
   });
-  afterWrite();
 }
 
-/** Copia un presupuesto como borrador nuevo, con fecha de hoy. */
+/** Copia un presupuesto como borrador nuevo, con fecha de hoy y número propio. */
 export async function duplicateBudget(id: string): Promise<Budget> {
   const source = await db.budgets.get(id);
   if (!source) throw new Error("No se encontró el presupuesto.");
   const budgetId = newId();
-  const copy: Budget = {
-    ...source,
-    id: budgetId,
-    number: null,
-    date: todayISO(),
-    status: "draft",
-    pdf_url: null,
-    created_at: nowIso(),
-  };
-  const items = (await db.budget_items.where("budget_id").equals(id).toArray()).map((item) => ({
-    ...item,
-    id: newId(),
-    budget_id: budgetId,
-  }));
-  await db.transaction("rw", db.budgets, db.budget_items, db.outbox, async () => {
+  const sourceItems = await db.budget_items.where("budget_id").equals(id).toArray();
+  return db.transaction("rw", db.budgets, db.budget_items, db.kv, db.outbox, async () => {
+    const copy: Budget = {
+      ...source,
+      id: budgetId,
+      number: await takeBudgetNumber(),
+      date: todayISO(),
+      status: "draft",
+      pdf_url: null,
+      created_at: nowIso(),
+    };
+    const items = sourceItems.map((item) => ({ ...item, id: newId(), budget_id: budgetId }));
     await db.budgets.add(copy);
     await markDirty("budgets", copy.id, "upsert");
     await db.budget_items.bulkAdd(items);
     for (const item of items) await markDirty("budget_items", item.id, "upsert");
+    return copy;
   });
-  afterWrite();
-  return copy;
 }
 
 /** Devuelve false si ya se convirtió en trabajo. */
@@ -257,11 +299,10 @@ export async function deleteBudget(id: string): Promise<boolean> {
     await db.budgets.delete(id);
     await markDirty("budgets", id, "delete");
   });
-  afterWrite();
   return true;
 }
 
-/** Registra un PDF en el historial; el archivo se sube con el próximo sync. */
+/** Guarda el PDF generado en el historial. El archivo vive en IndexedDB. */
 export async function recordPdf(budget: Budget, blob: Blob, fileName: string): Promise<BudgetPdf> {
   const professional = await getProfessional();
   const id = newId();
@@ -282,20 +323,7 @@ export async function recordPdf(budget: Budget, blob: Blob, fileName: string): P
     await db.budgets.update(budget.id, { pdf_url: path });
     await markDirty("budgets", budget.id, "upsert");
   });
-  afterWrite();
   return pdf;
-}
-
-const SHARE_LINK_SECONDS = 60 * 60 * 24 * 30;
-
-/** Link temporal al PDF para mandar por WhatsApp. Null sin conexión o si todavía no subió. */
-export async function signedPdfLink(path: string): Promise<string | null> {
-  try {
-    const { data } = await getSupabase().storage.from(BUCKETS.pdfs).createSignedUrl(path, SHARE_LINK_SECONDS);
-    return data?.signedUrl ?? null;
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------- Trabajos
@@ -318,7 +346,6 @@ export async function createJobFromBudget(budgetId: string): Promise<Job> {
     await db.jobs.add(job);
     await markDirty("jobs", job.id, "upsert");
   });
-  afterWrite();
   return job;
 }
 
@@ -327,32 +354,14 @@ export async function updateJob(id: string, changes: Partial<Job>) {
     await db.jobs.update(id, changes);
     await markDirty("jobs", id, "upsert");
   });
-  afterWrite();
 }
 
 const MAX_PHOTO_SIDE = 1600;
 
-/** Las fotos de celular pesan varios MB; se achican antes de guardar para no gastar datos. */
-async function compressPhoto(file: File): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_PHOTO_SIDE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
-    if (blob) return blob;
-  } catch {
-    // Formato que el navegador no decodifica: se sube tal cual.
-  }
-  return file;
-}
-
 export async function addJobPhoto(jobId: string, file: File): Promise<JobPhoto> {
   const professional = await getProfessional();
-  const blob = await compressPhoto(file);
+  // Las fotos de celular pesan varios MB: se achican para no llenar la memoria.
+  const blob = await resizeImage(file, MAX_PHOTO_SIDE, "image/jpeg", 0.8);
   const id = newId();
   const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
   const path = `${professional.user_id}/${jobId}/${id}.${extension}`;
@@ -362,7 +371,6 @@ export async function addJobPhoto(jobId: string, file: File): Promise<JobPhoto> 
     await db.blobs.put({ id, bucket: "job-photos", path, blob });
     await markDirty("job_photos", id, "upsert");
   });
-  afterWrite();
   return photo;
 }
 
@@ -372,22 +380,4 @@ export async function deleteJobPhoto(photo: JobPhoto) {
     await db.blobs.delete(photo.id);
     await markDirty("job_photos", photo.id, "delete", photo.url);
   });
-  afterWrite();
-}
-
-/** URLs firmadas para mostrar las fotos ya subidas. Vacío si no hay conexión. */
-export async function signedPhotoUrls(photos: JobPhoto[]): Promise<Record<string, string>> {
-  if (photos.length === 0) return {};
-  try {
-    const { data } = await getSupabase()
-      .storage.from(BUCKETS.photos)
-      .createSignedUrls(photos.map((photo) => photo.url), 60 * 60);
-    const byPath = new Map((data ?? []).map((entry) => [entry.path, entry.signedUrl]));
-    return Object.fromEntries(photos.flatMap((photo) => {
-      const url = byPath.get(photo.url);
-      return url ? [[photo.id, url]] : [];
-    }));
-  } catch {
-    return {};
-  }
 }

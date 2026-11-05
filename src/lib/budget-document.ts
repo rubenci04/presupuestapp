@@ -1,4 +1,6 @@
+import { getLogoBlob } from "./data";
 import { db } from "./db";
+import { blobToDataUrl } from "./files";
 import { safeFileName } from "./format";
 import type { Budget, BudgetItem, Client, Professional } from "./types";
 
@@ -25,22 +27,27 @@ export function pdfFileName(budget: Budget, client: Client): string {
   return `Presupuesto-${number}-${safeFileName(client.name)}.pdf`;
 }
 
+/** El logo como data URL, que es lo que necesitan el PDF y la vista previa. */
+export async function loadLogoDataUrl(): Promise<string | null> {
+  const logo = await getLogoBlob();
+  return logo ? blobToDataUrl(logo) : null;
+}
+
 export async function loadBudgetDocument(budgetId: string): Promise<BudgetDocumentData | null> {
   const budget = await db.budgets.get(budgetId);
   if (!budget) return null;
-  const [professional, client, items, logo] = await Promise.all([
+  const [professional, client, items, logoDataUrl] = await Promise.all([
     db.professionals.toCollection().first(),
     db.clients.get(budget.client_id),
     db.budget_items.where("budget_id").equals(budgetId).sortBy("position"),
-    db.kv.get("logo"),
+    loadLogoDataUrl(),
   ]);
   if (!professional || !client) return null;
-  const cachedLogo = logo?.value as { url: string; dataUrl: string } | undefined;
   return {
     professional,
     client,
     budget,
-    logoDataUrl: cachedLogo?.url === professional.logo_url ? cachedLogo.dataUrl : null,
+    logoDataUrl,
     labor: items.filter((item) => item.type === "labor"),
     materials: items.filter((item) => item.type === "material"),
   };

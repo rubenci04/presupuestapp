@@ -10,7 +10,7 @@ const APP_ROUTES = [
   "/registro",
   "/recuperar",
   "/nueva-clave",
-  "/onboarding",
+  "/bienvenida",
   "/panel",
   "/presupuestos",
   "/presupuestos/editar",

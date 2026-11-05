@@ -1,12 +1,13 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Briefcase, Check, Copy, Download, FileDown, Loader2, MessageCircle, MoreVertical, Pencil, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Briefcase, Check, Copy, Download, FileDown, Loader2, MessageCircle, MoreVertical, Pencil, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/app-shell";
+import { downloadBlob } from "@/components/backup-section";
 import { BudgetPreview } from "@/components/budget-preview";
 import { BudgetStatusBadge } from "@/components/status-badge";
 import {
@@ -22,24 +23,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { brandDisplayName, budgetNumberLabel, loadBudgetDocument, pdfFileName } from "@/lib/budget-document";
-import { createJobFromBudget, deleteBudget, duplicateBudget, recordPdf, setBudgetStatus, signedPdfLink } from "@/lib/data";
+import { createJobFromBudget, deleteBudget, duplicateBudget, recordPdf, setBudgetStatus } from "@/lib/data";
 import { db } from "@/lib/db";
 import { formatMoney, toWhatsAppNumber } from "@/lib/format";
-import { syncNow } from "@/lib/sync";
 import { BUDGET_STATUS_LABEL, type BudgetStatus } from "@/lib/types";
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 interface GeneratedPdf {
   file: File;
-  whatsappHref: string;
+  /** Mensaje para el cliente. */
+  text: string;
+  /** Número del cliente en formato wa.me, o null si no tiene uno válido. */
+  phone: string | null;
 }
 
 function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean }) {
@@ -54,31 +48,24 @@ function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean 
   const generate = useCallback(async () => {
     setGenerating(true);
     try {
-      // Con señal, primero se asegura el número definitivo que asigna el servidor.
-      await syncNow();
       const fresh = await loadBudgetDocument(id);
       if (!fresh) return;
+      // react-pdf pesa bastante: se carga recién cuando hace falta.
       const { renderBudgetPdf } = await import("@/components/budget-pdf");
       const blob = await renderBudgetPdf(fresh);
       const fileName = pdfFileName(fresh.budget, fresh.client);
-      const pdf = await recordPdf(fresh.budget, blob, fileName);
+      await recordPdf(fresh.budget, blob, fileName);
 
-      await syncNow();
-      const link = await signedPdfLink(pdf.url);
       const firstName = fresh.client.name.split(" ")[0];
-      const text = [
-        `Hola ${firstName}, te paso el presupuesto ${budgetNumberLabel(fresh.budget.number)} de ${brandDisplayName(fresh.professional)} por ${formatMoney(fresh.budget.total)}.`,
-        link ? `Lo podés ver acá: ${link}` : "",
-      ].filter(Boolean).join("\n");
-      const phone = toWhatsAppNumber(fresh.client.phone);
       setGenerated({
         file: new File([blob], fileName, { type: "application/pdf" }),
-        whatsappHref: `https://wa.me/${phone ?? ""}?text=${encodeURIComponent(text)}`,
+        text: `Hola ${firstName}, te paso el presupuesto ${budgetNumberLabel(fresh.budget.number)} de ${brandDisplayName(fresh.professional)} por ${formatMoney(fresh.budget.total)}.`,
+        phone: toWhatsAppNumber(fresh.client.phone),
       });
-      toast.success(fresh.budget.number === null ? "PDF generado. Sin señal: va sin número hasta sincronizar." : "PDF generado");
+      toast.success("El PDF está listo");
     } catch (error) {
       console.error(error);
-      toast.error("No se pudo generar el PDF. Probá de nuevo.");
+      toast.error("No se pudo armar el PDF. Probá de nuevo.");
     } finally {
       setGenerating(false);
     }
@@ -96,7 +83,7 @@ function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean 
   if (data === null) {
     return (
       <div className="px-6 py-16 text-center">
-        <p className="font-semibold">No se encontró este presupuesto.</p>
+        <p className="text-lg font-semibold">No se encontró este presupuesto.</p>
         <Button asChild variant="outline" className="mt-4">
           <Link href="/presupuestos">Volver a la lista</Link>
         </Button>
@@ -110,20 +97,27 @@ function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean 
     if (budget.status === "draft") await setBudgetStatus(id, "sent");
   }
 
-  async function share() {
+  /**
+   * Manda el PDF por WhatsApp. En el celular se abre el menú de compartir con el archivo
+   * adjunto (se elige WhatsApp y el contacto). Si el navegador no lo permite, se descarga
+   * el PDF y se abre el chat del cliente con el mensaje, para adjuntarlo a mano.
+   */
+  async function sendWhatsApp() {
     if (!generated) return;
-    const payload = { files: [generated.file], title: generated.file.name };
+    const payload = { files: [generated.file], title: generated.file.name, text: generated.text };
     if (navigator.canShare?.(payload)) {
       try {
         await navigator.share(payload);
         await markSentIfDraft();
       } catch (error) {
-        if ((error as Error).name !== "AbortError") toast.error("No se pudo compartir el PDF.");
+        if ((error as Error).name !== "AbortError") toast.error("No se pudo abrir WhatsApp. Probá con “Descargar PDF”.");
       }
-    } else {
-      downloadBlob(generated.file, generated.file.name);
-      toast("Este navegador no permite compartir archivos: descargamos el PDF.");
+      return;
     }
+    downloadBlob(generated.file, generated.file.name);
+    window.open(`https://wa.me/${generated.phone ?? ""}?text=${encodeURIComponent(generated.text)}`, "_blank", "noopener");
+    toast("Se descargó el PDF. Adjuntalo en el chat de WhatsApp.");
+    await markSentIfDraft();
   }
 
   async function changeStatus(status: BudgetStatus) {
@@ -142,7 +136,7 @@ function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean 
       toast.success("Presupuesto eliminado");
       router.replace("/presupuestos");
     } else {
-      toast.error("Ya tiene un trabajo asociado, así que no se puede eliminar.");
+      toast.error("Ya tiene un trabajo, así que no se puede eliminar.");
     }
   }
 
@@ -195,47 +189,40 @@ function BudgetDetail({ id, autoGenerate }: { id: string; autoGenerate: boolean 
           {!generated ? (
             <Button size="lg" className="w-full" onClick={generate} disabled={generating}>
               {generating ? <Loader2 className="animate-spin" /> : <FileDown />}
-              {generating ? "Generando PDF…" : "Generar PDF"}
+              {generating ? "Armando el PDF…" : "Armar el PDF"}
             </Button>
           ) : (
             <>
-              <Button asChild size="lg" className="w-full bg-[#128C4B] text-white hover:bg-[#128C4B]/90">
-                <a href={generated.whatsappHref} target="_blank" rel="noopener noreferrer" onClick={() => void markSentIfDraft()}>
-                  <MessageCircle /> Enviar por WhatsApp
-                </a>
+              <Button size="lg" className="w-full bg-[#128C4B] text-white hover:bg-[#128C4B]/90" onClick={sendWhatsApp}>
+                <MessageCircle /> Enviar por WhatsApp
               </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={share}>
-                  <Share2 /> Compartir PDF
-                </Button>
-                <Button variant="outline" onClick={() => downloadBlob(generated.file, generated.file.name)}>
-                  <Download /> Descargar
-                </Button>
-              </div>
+              <Button variant="outline" size="lg" className="w-full" onClick={() => downloadBlob(generated.file, generated.file.name)}>
+                <Download /> Descargar PDF
+              </Button>
             </>
           )}
         </section>
 
         <section className="grid grid-cols-2 gap-2">
           {budget.status !== "accepted" && (
-            <Button variant="secondary" onClick={() => changeStatus("accepted")}>
-              <Check /> Aceptado
+            <Button variant="secondary" size="lg" onClick={() => changeStatus("accepted")}>
+              <Check /> Lo aceptó
             </Button>
           )}
           {budget.status !== "rejected" && !job && (
-            <Button variant="secondary" onClick={() => changeStatus("rejected")}>
-              <X /> Rechazado
+            <Button variant="secondary" size="lg" onClick={() => changeStatus("rejected")}>
+              <X /> No lo aceptó
             </Button>
           )}
           {budget.status === "accepted" &&
             (job ? (
-              <Button asChild variant="default">
+              <Button asChild size="lg">
                 <Link href={`/trabajos/ver?id=${job.id}`}>
                   <Briefcase /> Ver trabajo
                 </Link>
               </Button>
             ) : (
-              <Button onClick={convertToJob}>
+              <Button size="lg" onClick={convertToJob}>
                 <Briefcase /> Pasar a trabajo
               </Button>
             ))}

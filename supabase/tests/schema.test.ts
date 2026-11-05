@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // provee la plataforma (auth, storage, roles) se reemplaza por este stub mínimo.
 const PLATFORM_STUB = `
   create role authenticated nologin;
+  create role service_role nologin;
   create schema auth;
   create table auth.users (id uuid primary key, raw_user_meta_data jsonb default '{}');
   create function auth.uid() returns uuid language sql stable as

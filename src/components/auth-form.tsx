@@ -9,9 +9,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authErrorMessage } from "@/lib/auth";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export function AuthPage({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
+  // La cuenta es opcional y todavía no está habilitada: sin Supabase no hay nada que mostrar.
+  if (!isSupabaseConfigured()) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
+        <h1 className="text-2xl font-extrabold">La cuenta todavía no está disponible</h1>
+        <p className="mt-2 text-muted-foreground">No hace falta una cuenta para usar PresupuestApp.</p>
+        <Button asChild size="lg" className="mt-6">
+          <Link href="/panel">Ir a la app</Link>
+        </Button>
+      </main>
+    );
+  }
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
       <Link href="/" className="text-sm font-bold tracking-wide text-primary">

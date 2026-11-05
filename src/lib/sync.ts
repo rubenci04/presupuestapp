@@ -1,4 +1,6 @@
+import { CLOUD_SYNC } from "./config";
 import { db, setKv, type OutboxEntry, type SyncedTable } from "./db";
+import { blobToDataUrl } from "./files";
 import { getSupabase } from "./supabase";
 
 /**
@@ -57,6 +59,8 @@ export async function markDirty(
   op: OutboxEntry["op"],
   removeFile?: string,
 ) {
+  // Mientras no haya nube, no se encola nada.
+  if (!CLOUD_SYNC) return;
   const key = `${table}:${pk}`;
   const existing = await db.outbox.get(key);
   await db.outbox.put({
@@ -262,15 +266,6 @@ async function refreshLogoCache() {
   const response = await fetch(url);
   if (!response.ok) return;
   await setKv("logo", { url, dataUrl: await blobToDataUrl(await response.blob()) });
-}
-
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }
 
 /** Vuelve a intentar los cambios que el servidor había rechazado. */

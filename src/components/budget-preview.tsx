@@ -21,7 +21,7 @@ export function BudgetPreview({ data }: { data: BudgetDocumentData }) {
   ].filter(Boolean) as [string, string][];
 
   return (
-    <article className="rounded-sm bg-white p-4 text-[0.82rem] leading-snug text-[#1C1917] shadow-sm ring-1 ring-border">
+    <article className="rounded-sm bg-white p-4 text-base leading-snug text-[#1C1917] shadow-sm ring-1 ring-border">
       <header className="flex items-center gap-3 border-b-[3px] pb-3" style={{ borderColor: color }}>
         {logoDataUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- data URL local
@@ -41,7 +41,7 @@ export function BudgetPreview({ data }: { data: BudgetDocumentData }) {
       </header>
 
       <section className="mt-3">
-        <p className="text-[0.65rem] font-bold text-[#6B635B]">CLIENTE</p>
+        <p className="text-sm font-bold text-[#6B635B]">CLIENTE</p>
         <p className="font-bold">{client.name}</p>
         <p className="text-xs text-[#6B635B]">{[client.phone, client.address, client.email].filter(Boolean).join(" · ")}</p>
       </section>
@@ -61,7 +61,7 @@ export function BudgetPreview({ data }: { data: BudgetDocumentData }) {
 
       {terms.length > 0 && (
         <section className="mt-4 bg-[#F7F4EF] p-3">
-          <p className="mb-1 text-[0.65rem] font-bold text-[#6B635B]">CONDICIONES</p>
+          <p className="mb-1 text-sm font-bold text-[#6B635B]">CONDICIONES</p>
           <dl className="space-y-1">
             {terms.map(([label, value]) => (
               <div key={label}>

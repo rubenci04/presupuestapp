@@ -9,8 +9,7 @@
     "test": "vitest run src supabase/tests",
     "test:e2e": "playwright test",
     "icons": "node scripts/generate-icons.mjs",
-    "preview": "npx serve out",
-    "test:e2e:real": "playwright test -c playwright.real.config.ts"
+    "preview": "npx serve out"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",

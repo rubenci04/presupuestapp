@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { budgetNumberLabel } from "@/lib/budget-document";
-import { addJobPhoto, deleteJobPhoto, signedPhotoUrls, updateJob } from "@/lib/data";
+import { addJobPhoto, deleteJobPhoto, updateJob } from "@/lib/data";
 import { db } from "@/lib/db";
 import { formatMoney, toWhatsAppNumber } from "@/lib/format";
 import { JOB_STATUSES, JOB_STATUS_LABEL, type JobPhoto } from "@/lib/types";
@@ -25,24 +25,19 @@ function PhotoGrid({ jobId }: { jobId: string }) {
   const input = useRef<HTMLInputElement>(null);
   const objectUrls = useRef<Record<string, string>>({});
 
-  // Las pendientes de subir se muestran desde el celular; el resto, con URL firmada.
+  // Las fotos viven en IndexedDB: se muestran con una URL temporal.
   useEffect(() => {
     const missing = photos.filter((photo) => !sources[photo.id]);
     if (missing.length === 0) return;
     let cancelled = false;
     (async () => {
       const next: Record<string, string> = {};
-      const remote: JobPhoto[] = [];
       for (const photo of missing) {
-        const pending = await db.blobs.get(photo.id);
-        if (pending) {
-          objectUrls.current[photo.id] ??= URL.createObjectURL(pending.blob);
-          next[photo.id] = objectUrls.current[photo.id];
-        } else {
-          remote.push(photo);
-        }
+        const file = await db.blobs.get(photo.id);
+        if (!file) continue;
+        objectUrls.current[photo.id] ??= URL.createObjectURL(file.blob);
+        next[photo.id] = objectUrls.current[photo.id];
       }
-      Object.assign(next, await signedPhotoUrls(remote));
       if (!cancelled && Object.keys(next).length > 0) setSources((current) => ({ ...current, ...next }));
     })();
     return () => {
@@ -79,7 +74,7 @@ function PhotoGrid({ jobId }: { jobId: string }) {
               // eslint-disable-next-line @next/next/no-img-element -- URL firmada o blob local
               <img src={sources[photo.id]} alt="Foto del trabajo" className="size-full object-cover" />
             ) : (
-              <p className="flex size-full items-center justify-center p-2 text-center text-xs text-muted-foreground">Disponible con conexión</p>
+              <p className="flex size-full items-center justify-center p-2 text-center text-xs text-muted-foreground">No se encontró la foto</p>
             )}
             <button
               type="button"
@@ -98,7 +93,7 @@ function PhotoGrid({ jobId }: { jobId: string }) {
           className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed bg-card text-sm text-muted-foreground"
         >
           <Camera className="size-6" />
-          {adding ? "Guardando…" : "Agregar"}
+          {adding ? "Guardando…" : "Agregar foto"}
         </button>
       </div>
       <input ref={input} type="file" accept="image/*" multiple className="hidden" data-testid="photo-input" onChange={(event) => add(event.target.files)} />

@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { budgetTotals, computeTotals, lineTotal, saleUnitPrice } from "@/lib/budget-calc";
-import type { BudgetDocumentData } from "@/lib/budget-document";
+import { loadLogoDataUrl, type BudgetDocumentData } from "@/lib/budget-document";
 import { buildItems, getProfessional, newId, saveBudget, type ItemInput } from "@/lib/data";
 import { db } from "@/lib/db";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
@@ -111,7 +111,7 @@ function validate(form: FormState): string | null {
     if (!line.quantity || line.quantity <= 0) return `Revisá la cantidad de “${line.description}”.`;
     if (line.type === "labor" && (line.unit_price === null || line.unit_price < 0)) return `Falta el precio de “${line.description}”.`;
     if (line.type === "material" && (line.cost_price === null || line.cost_price < 0)) return `Falta el costo de “${line.description}”.`;
-    if (line.type === "material" && (line.markup_percent === null || line.markup_percent < 0)) return `Revisá el markup de “${line.description}”.`;
+    if (line.type === "material" && (line.markup_percent === null || line.markup_percent < 0)) return `Revisá la ganancia de “${line.description}”.`;
   }
   return null;
 }
@@ -166,12 +166,12 @@ function LineCard({ line, onChange, onRemove }: { line: Line; onChange: (line: L
         {isMaterial ? (
           <>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Tu costo unitario</Label>
-              <DecimalInput aria-label="Costo unitario" placeholder="$" value={line.cost_price} onValueChange={(cost_price) => onChange({ ...line, cost_price })} />
+              <Label className="text-muted-foreground">Lo que te cuesta (cada uno)</Label>
+              <DecimalInput aria-label="Lo que te cuesta" placeholder="$" value={line.cost_price} onValueChange={(cost_price) => onChange({ ...line, cost_price })} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Markup %</Label>
-              <DecimalInput aria-label="Markup" value={line.markup_percent} onValueChange={(markup_percent) => onChange({ ...line, markup_percent })} />
+              <Label className="text-muted-foreground">Tu ganancia %</Label>
+              <DecimalInput aria-label="Tu ganancia" value={line.markup_percent} onValueChange={(markup_percent) => onChange({ ...line, markup_percent })} />
             </div>
           </>
         ) : (
@@ -318,19 +318,18 @@ function BudgetEditor() {
       toast.error(error);
       return;
     }
-    const [professional, client, logo] = await Promise.all([
+    const [professional, client, logoDataUrl] = await Promise.all([
       getProfessional(),
       db.clients.get(form.clientId!),
-      db.kv.get("logo"),
+      loadLogoDataUrl(),
     ]);
     if (!client) return;
     const items = buildItems(existing?.id ?? "preview", toItemInputs(form.lines));
     const computed = budgetTotals(totals);
-    const cachedLogo = logo?.value as { url: string; dataUrl: string } | undefined;
     setPreview({
       professional,
       client,
-      logoDataUrl: cachedLogo?.url === professional.logo_url ? cachedLogo.dataUrl : null,
+      logoDataUrl,
       labor: items.filter((item) => item.type === "labor"),
       materials: items.filter((item) => item.type === "material"),
       budget: {
@@ -502,7 +501,7 @@ function BudgetEditor() {
               <Eye /> Vista previa
             </Button>
             <Button type="button" onClick={saveAndGenerate} disabled={saving}>
-              <FileDown /> Generar PDF
+              <FileDown /> Armar PDF
             </Button>
           </div>
         </div>

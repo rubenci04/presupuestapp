@@ -1,9 +1,10 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
+import { BackupReminder } from "@/components/backup-section";
 import { BudgetStatusBadge, JobStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { budgetNumberLabel } from "@/lib/budget-document";
@@ -54,10 +55,19 @@ export default function PanelPage() {
 
   return (
     <div className="space-y-6 px-4 pt-6">
-      <header>
-        <p className="text-sm text-muted-foreground">Hola, {professional?.name || "de nuevo"}</p>
-        <h1 className="truncate text-2xl font-extrabold tracking-tight">{professional?.brand_name || "Tu panel"}</h1>
+      <header className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-muted-foreground">Hola{professional?.name ? `, ${professional.name}` : ""}</p>
+          <h1 className="truncate text-2xl font-extrabold tracking-tight">{professional?.brand_name || "Tu panel"}</h1>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/perfil">
+            <Settings /> Ajustes
+          </Link>
+        </Button>
       </header>
+
+      <BackupReminder />
 
       <Button asChild size="lg" className="h-14 w-full text-lg">
         <Link href="/presupuestos/editar">

@@ -2,77 +2,61 @@
 
 **Presupuestos profesionales en 1 minuto, con tu marca.**
 
-PWA para trabajadores independientes de oficios en Argentina: presupuestos con logo y datos propios, materiales con margen de ganancia, PDF listo para WhatsApp y una agenda simple de trabajos. Funciona sin conexión y sincroniza al volver la señal.
+PWA para trabajadores independientes de oficios en Argentina: presupuestos con logo y datos propios, materiales con margen de ganancia, PDF listo para WhatsApp y una agenda simple de trabajos.
+
+**No pide cuenta ni login.** Al abrirla hay una sola pantalla de bienvenida y listo. Todo se guarda en el celular y funciona sin internet. Supabase queda en el código como opción para un respaldo en la nube más adelante, pero hoy no se usa.
 
 ## Qué incluye
 
-- **Cuenta y perfil:** email y contraseña o Google; datos personales, logo, color de marca y texto al pie.
-- **Oficios:** catálogo de 45 oficios argentinos, más los personalizados.
-- **Presupuestos:** cliente, mano de obra, materiales con markup (30 % por defecto, el cliente nunca lo ve), IVA de 21 %, 10,5 % o 0 %, condiciones, numeración automática, búsqueda, filtros y duplicado.
-- **PDF A4:** descarga, compartir por Web Share API y link a WhatsApp, con historial de PDFs generados.
+- **Bienvenida única:** nombre o negocio, teléfono, oficio, y de forma opcional logo y color. Después, directo a "Nuevo presupuesto".
+- **Oficios:** catálogo de 45 oficios argentinos con buscador, más "Otro" y los personalizados.
+- **Presupuestos:** cliente, mano de obra, materiales con ganancia (30 % por defecto, el cliente nunca la ve), IVA de 21 %, 10,5 % o 0 %, condiciones, número correlativo local (1, 2, 3…), búsqueda, filtros y duplicado.
+- **PDF A4:** con logo y marca. Se envía por WhatsApp con el menú de compartir de Android, que adjunta el archivo, o se descarga. Historial de PDFs.
 - **Trabajos:** un presupuesto aceptado pasa a la agenda, con estados, fechas, notas, fotos y filtros.
-- **Offline:** todas las pantallas abren sin red. Se puede crear y editar, generar PDFs y sacar fotos; todo se sube solo después.
+- **Copia de seguridad:** se guarda todo (incluidos logo, fotos y PDFs) en un archivo y se recupera desde Ajustes o desde la bienvenida. Un aviso suave en el inicio recuerda hacerla cada semana.
+- **Sin conexión:** todas las pantallas abren sin red, porque no hay servidor de por medio.
 
 ## Stack
 
-Next.js 15 (App Router, export estático) · TypeScript estricto · Tailwind CSS 4 · shadcn/ui · Supabase (Auth, PostgreSQL, Storage) · Dexie (IndexedDB) · @ducanh2912/next-pwa · @react-pdf/renderer · Vitest · Playwright
+Next.js 15 (App Router, export estático) · TypeScript estricto · Tailwind CSS 4 · shadcn/ui · Dexie (IndexedDB) · @ducanh2912/next-pwa · @react-pdf/renderer · Vitest · Playwright. Supabase (Auth, PostgreSQL, Storage) está en el código pero apagado.
 
 ## Cómo está armado
 
 ```
-src/app/(app)/      Pantallas privadas (panel, presupuestos, clientes, trabajos, perfil)
-src/app/...         Landing, login, registro, onboarding, offline
+src/app/(app)/      Pantallas de la app (inicio, presupuestos, clientes, trabajos, ajustes)
+src/app/bienvenida  Primer uso
+src/app/...         "/" (redirige), offline, y login/registro (opcionales, sin uso hoy)
 src/components/     UI compartida, PDF y vista previa
 src/lib/db.ts       Esquema local (Dexie)
 src/lib/data.ts     Todas las escrituras de la app
-src/lib/sync.ts     Sincronización con Supabase
-supabase/migrations Schema, RLS, buckets y catálogo de oficios
-supabase/tests      Tests de RLS y schema sobre Postgres embebido
-e2e/                Flujos completos en Chrome móvil
+src/lib/backup.ts   Copia de seguridad: exportar e importar
+src/lib/catalog.ts  Los 45 oficios
+src/lib/config.ts   CLOUD_SYNC (apagado) y claves de la base local
+src/lib/sync.ts     Sincronización con Supabase (dormida)
+supabase/           Migraciones, setup_completo.sql y tests del schema (dormidos)
+e2e/                Flujos completos en Chrome móvil, sin red
 ```
 
-Tres decisiones explican casi todo lo demás:
+Decisiones que explican casi todo:
 
-1. **Sitio 100 % estático (`output: "export"`).** No hay servidor propio ni secretos: la seguridad de los datos la da RLS en Supabase. Por eso los detalles usan query params (`/presupuestos/ver?id=...`): así una sola página precacheada sirve para cualquier presupuesto sin conexión.
-2. **Local-first.** La UI lee y escribe IndexedDB. Cada escritura deja una entrada en un outbox, y `sync.ts` sube los cambios y baja lo último. Los ids los genera el cliente, así que se pueden crear filas relacionadas sin red. Con un usuario por cuenta, gana la última escritura.
-3. **El número de presupuesto lo asigna el servidor** con un trigger, para que dos equipos no repitan números. Un presupuesto creado sin señal figura como "Sin número" hasta sincronizar.
-
-Los PDFs y las fotos tienen datos de clientes, así que van en buckets privados y se leen con URLs firmadas. Las columnas `pdf_url` y `url` guardan el path dentro del bucket. El link de WhatsApp es una URL firmada que vence a los 30 días y sirve para cualquiera que la tenga.
-
-### Agregados al modelo de datos pedido
-
-| Agregado | Motivo |
-| --- | --- |
-| `professionals.last_name`, `onboarded_at`, `last_budget_number` | Apellido, control del onboarding y correlativo |
-| `oficios.category`, `oficios.professional_id` | Agrupar el catálogo y permitir oficios personalizados |
-| `budgets.payment_method` | Forma de pago, que no tenía columna |
-| `budget_items.position` | Conservar el orden de los ítems |
-| Tabla `budget_pdfs` | Historial de PDFs generados |
-| Bucket `job-photos` | Fotos de trabajos |
+1. **Todo en el dispositivo.** Los datos viven en IndexedDB. El logo, las fotos y los PDFs se guardan como `Blob` en la misma base. Al iniciar se llama a `navigator.storage.persist()` para pedirle al navegador que no los borre si falta espacio.
+2. **Sitio estático (`output: "export"`).** No hay servidor ni secretos. Los detalles usan query params (`/presupuestos/ver?id=...`), así una sola página precacheada sirve para cualquier presupuesto sin conexión.
+3. **Número correlativo local.** Sale de un contador guardado aparte: si se borra el último presupuesto, su número no se reutiliza, porque ya pudo haberse enviado.
+4. **El respaldo en la nube está apagado, no borrado.** `CLOUD_SYNC = false` en `src/lib/config.ts` hace que las escrituras no encolen nada. El código de login, `sync.ts` y el SQL siguen ahí; las rutas `/login` y `/registro` existen pero no están enlazadas, y sin las variables de Supabase solo muestran un aviso.
 
 ## Desarrollo local
 
-Requisitos: Node 20 o superior y Docker Desktop corriendo (para Supabase local).
+Requisitos: Node 20 o superior.
 
 ```bash
 npm install
 ```
 
 ```bash
-npx supabase start
-```
-
-Ese comando aplica las migraciones y muestra la URL y la clave `anon`. Copialas a `.env.local`:
-
-```bash
-cp .env.example .env.local
-```
-
-```bash
 npm run dev
 ```
 
-La app queda en http://localhost:3000. El service worker está desactivado en `dev`; para probar la PWA:
+La app queda en http://localhost:3000. **No hace falta ninguna variable de entorno.** El service worker está desactivado en `dev`; para probar la PWA:
 
 ```bash
 npm run build
@@ -82,88 +66,44 @@ npm run build
 npm run preview
 ```
 
-### Variables de entorno
-
-| Variable | Dónde se obtiene |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase > Connect |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase > Project Settings > API Keys: la clave publishable o la `anon` (públicas; los datos los protege RLS) |
-
-Se incrustan en el build: si las cambiás, hay que volver a compilar. **Nunca** uses acá la clave secret o `service_role`.
-
 ### Tests
 
 ```bash
 npm test
 ```
 
-Corre tests unitarios (formatos, cálculos) y prueba las migraciones reales en Postgres embebido: RLS entre usuarios, numeración, FK, buckets. No necesita Docker.
+Unitarios (formatos, cálculos, numeración local y copia de seguridad sobre IndexedDB simulado) y pruebas de las migraciones de Supabase sobre Postgres embebido. No necesita Docker ni Supabase.
 
 ```bash
 npm run test:e2e
 ```
 
-Compila y corre los flujos en Chrome (necesita Chrome instalado) contra `e2e/fake-backend.mjs`, un backend en memoria que imita a Supabase. Cubre registro, onboarding, presupuesto, PDF, WhatsApp, agenda, fotos y el modo offline. No necesita Docker.
-
-```bash
-npm run test:e2e:real
-```
-
-Corre los flujos contra el Supabase local de verdad (hace falta `npx supabase start` antes). Además comprueba el aislamiento entre usuarios por HTTP, los límites de los buckets, el link firmado de WhatsApp, la caída de la API con `docker stop` y la recuperación de contraseña con el mail real en Mailpit. No cubre el login con Google, que necesita credenciales propias.
+Compila la app **sin variables de Supabase** y corre los flujos en Chrome móvil: abrir, bienvenida, presupuesto, PDF, compartir, trabajos, fotos, copia de seguridad y recuperación, todo con el servidor cortado, y que nada se salga de la pantalla en 360 px. Verifica además que la app no hace ningún pedido fuera de sí misma. Necesita Chrome instalado.
 
 ## Deploy
 
-Para hacerlo solo desde los paneles web, sin terminal, seguí [docs/DEPLOY_PASO_A_PASO.md](docs/DEPLOY_PASO_A_PASO.md). Abajo está la versión con la CLI de Supabase.
+Es un sitio estático: **no necesita variables de entorno.** La guía completa para hacerlo desde los paneles web, sin terminal, está en [docs/DEPLOY_PASO_A_PASO.md](docs/DEPLOY_PASO_A_PASO.md).
 
-### 1. Supabase (producción)
+Resumen para Cloudflare Pages:
 
-1. Creá un proyecto en [supabase.com](https://supabase.com).
-2. Aplicá las migraciones:
+| Campo | Valor |
+| --- | --- |
+| Framework preset | `Next.js (Static HTML Export)` |
+| Build command | `npx next build` |
+| Build output directory | `out` |
+| Node | 24, fijado en `.node-version` |
+| Variables | ninguna |
 
-   ```bash
-   npx supabase login
-   ```
+Cloudflare Pages [permite uso comercial en el plan gratuito, según comparativas públicas](https://freetier-atlas.pages.dev/en/tools/cloudflare-pages/); confirmalo en sus [condiciones](https://developers.cloudflare.com/pages/platform/limits/). El plan Hobby de Vercel es [solo para uso no comercial](https://vercel.com/docs/limits/fair-use-guidelines).
 
-   ```bash
-   npx supabase link --project-ref TU_PROJECT_REF
-   ```
+## Respaldo en la nube (opcional, para más adelante)
 
-   ```bash
-   npx supabase db push
-   ```
-
-3. En **Authentication > URL Configuration**, poné tu dominio en **Site URL** y agregá `https://tu-dominio/**` en **Redirect URLs**.
-4. Si no querés confirmación por email, desactivala en **Authentication > Sign In / Providers > Email**. La app soporta los dos modos.
-
-### 2. Login con Google
-
-1. En [Google Cloud Console](https://console.cloud.google.com/apis/credentials) creá un **ID de cliente OAuth** de tipo *Aplicación web*.
-2. En **URIs de redireccionamiento autorizados** agregá `https://TU_PROJECT_REF.supabase.co/auth/v1/callback`.
-3. En Supabase, **Authentication > Sign In / Providers > Google**, activalo y pegá el Client ID y el Secret.
-
-### 3. Hosting: Cloudflare Pages (recomendado)
-
-Como el sitio es estático, sirve cualquier host. Para un producto que se va a usar comercialmente, la mejor opción gratuita es **Cloudflare Pages**: según comparativas públicas, el plan gratis tiene ancho de banda ilimitado y permite uso comercial. Confirmá las condiciones actuales en [Cloudflare](https://developers.cloudflare.com/pages/platform/limits/) antes de lanzar.
-
-1. **Workers & Pages > Create > Pages > Connect to Git** y elegí este repo.
-2. Configuración de build:
-   - Framework preset: `Next.js (Static HTML Export)`
-   - Build command: `npx next build`
-   - Output directory: `out`
-3. Agregá las dos variables de entorno. La versión de Node sale de `.node-version`.
-
-### Alternativa: Vercel
-
-Importá el repo en [vercel.com](https://vercel.com) y agregá las variables; detecta la configuración sola. Es lo más simple, pero el plan **Hobby es solo para uso personal no comercial** ([condiciones](https://vercel.com/docs/limits/fair-use-guidelines)): sirve para probar, y para cobrar o usarlo comercialmente hace falta el plan Pro.
-
-### A tener en cuenta en Supabase gratis
-
-El plan gratuito pausa el proyecto tras unos 7 días sin actividad y tiene límites de base y de almacenamiento: revisá los valores vigentes en [supabase.com/pricing](https://supabase.com/pricing). Con usuarios reales conviene pasar al plan Pro: si se pausa, nadie puede sincronizar hasta reactivarlo a mano.
+El SQL completo está en `supabase/setup_completo.sql` y los pasos para crear el proyecto, configurar Auth y el login con Google están en la parte C de la guía de deploy. Para activarlo falta, además de crear el proyecto: cargar las dos variables `NEXT_PUBLIC_SUPABASE_*`, poner `CLOUD_SYNC = true`, y agregar el login y la sincronización al flujo de la app, que hoy no están conectados. Esos pasos de código no se probaron en esta versión.
 
 ## Limitaciones conocidas
 
-- **Primer ingreso:** requiere conexión, para bajar el perfil y el catálogo. Subir el logo también.
-- **PDF sin señal:** sale con "Sin número" y así queda en el historial. Con señal conviene generarlo de nuevo antes de enviarlo.
-- **Compartir PDF:** la Web Share API con archivos depende del navegador; donde no está, se descarga el PDF.
-- **PDF y Unicode:** usa la fuente Helvetica integrada, que cubre español pero no emojis ni alfabetos no latinos.
+- **Los datos viven en un solo celular.** Si se borran los datos del navegador, se desinstala la app o se pierde el equipo, se pierden. Por eso la copia de seguridad y el aviso.
+- **No hay sincronización entre equipos.** Para pasar los datos a otro celular, se usa la copia de seguridad.
+- **Compartir PDF:** la Web Share API con archivos depende del navegador. Si no está, se descarga el PDF y se abre el chat de WhatsApp con el mensaje, para adjuntarlo a mano.
+- **PDF:** usa la fuente Helvetica integrada, que cubre español pero no emojis ni alfabetos no latinos.
 - **Fuera de este MVP:** recibos, facturación AFIP, pagos integrados, multiusuario, geolocalización de fotos.

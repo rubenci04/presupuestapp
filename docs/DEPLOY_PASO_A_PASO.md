@@ -1,122 +1,18 @@
 # Cómo publicar PresupuestApp, paso a paso
 
-Esta guía es para hacerlo todo desde los paneles web, sin usar la terminal. Vas a usar dos servicios:
+Esta guía es para hacerlo todo desde los paneles web, sin usar la terminal.
 
-- **Supabase:** guarda los datos, los usuarios y los archivos.
-- **Cloudflare Pages:** publica la app en internet.
+**PresupuestApp ya no necesita cuenta, ni base de datos, ni variables.** Se publica como un sitio común y cada persona guarda sus datos en su propio celular. Por eso la parte que hay que hacer sí o sí es corta: publicar en Cloudflare (parte A) y probarla en un Android (parte B).
 
-Necesitás una cuenta de GitHub con acceso al repo `rubenci04/presupuestapp` y un celular Android para la prueba final. Calculá una hora la primera vez.
+Supabase (la base de datos en internet) quedó como **opcional**, para cuando se quiera ofrecer un respaldo en la nube. Está explicado al final (parte C) y no hace falta para lanzar.
+
+Necesitás una cuenta de GitHub con acceso al repo `rubenci04/presupuestapp` y un celular Android. Calculá media hora.
 
 > Los paneles cambian seguido. Si un botón no se llama exactamente igual, buscá el más parecido.
 
-**Regla de oro sobre las claves:** en esta guía solo se usa la clave **publishable** (empieza con `sb_publishable_`), que está pensada para ir en la app. La clave **secret** o **service_role** no se usa nunca: no la pegues en Cloudflare, en el código ni en un chat.
-
 ---
 
-## A. Crear el proyecto en Supabase y correr el SQL
-
-### A.1 Crear el proyecto
-
-1. Entrá a [supabase.com](https://supabase.com) y creá una cuenta o iniciá sesión.
-2. Tocá **New project**.
-3. Completá los datos:
-   - **Name:** `presupuestapp`.
-   - **Database password:** tocá **Generate** y guardala en un lugar seguro. La app no la usa, pero conviene no perderla.
-   - **Region:** **South America (São Paulo)**, la más cercana a Argentina.
-4. Si aparecen opciones de seguridad, dejá **Data API activada**. La app no funciona sin ella.
-5. Tocá **Create new project** y esperá un par de minutos.
-
-### A.2 Correr el SQL
-
-Hacé esto **antes de registrar cualquier usuario**. Quien se registre antes queda sin perfil y la app no le va a cargar.
-
-1. En el repo de GitHub, abrí [`supabase/setup_completo.sql`](../supabase/setup_completo.sql) y tocá el botón **Copy raw file** (el ícono de copiar, arriba a la derecha del archivo).
-2. En Supabase, abrí **SQL Editor** en el menú de la izquierda y creá una consulta nueva.
-3. Pegá todo y tocá **Run**.
-4. Puede aparecer un aviso de operación destructiva, porque el script reemplaza policies y triggers. Confirmá: no borra datos.
-5. Abajo tiene que aparecer **`oficios: 45`** y **`buckets: 3`**.
-
-Si da error, no se aplica nada: se puede corregir y volver a correr sin problema.
-
-### A.3 Copiar la URL y la clave
-
-Las vas a necesitar en el paso D, así que dejalas a mano.
-
-1. Tocá **Connect**, arriba en el panel del proyecto. También están en **Project Settings > API Keys**.
-2. Copiá la **URL del proyecto**, con esta forma: `https://abcdefgh.supabase.co`. Tiene que terminar ahí, sin `/rest/v1` ni barra final.
-3. Copiá la **Publishable key**, que empieza con `sb_publishable_`.
-
----
-
-## B. Configurar Auth
-
-### B.1 Site URL y Redirect URLs
-
-Estas direcciones indican a qué páginas puede volver un usuario después de confirmar un mail o entrar con Google. Si están mal, esos links van a `localhost` o fallan.
-
-Vas a saber tu dirección definitiva recién al terminar el paso D. **Volvé acá después de publicar.** Si tu dirección es `https://presupuestapp.pages.dev`:
-
-1. Andá a **Authentication > URL Configuration**.
-2. En **Site URL** poné: `https://presupuestapp.pages.dev`
-3. En **Redirect URLs** tocá **Add URL** y agregá: `https://presupuestapp.pages.dev/**`
-4. Guardá.
-
-Los dos asteriscos del final son necesarios, porque la app vuelve a `/panel` y a `/nueva-clave`.
-
-### B.2 Mails: importante antes de tener usuarios reales
-
-El servicio de mail que trae Supabase es solo para pruebas: [manda 2 mails por hora y únicamente a personas del equipo del proyecto](https://supabase.com/docs/guides/auth/auth-smtp). A cualquier otra persona le falla con el error `Email address not authorized`.
-
-Afecta a la confirmación de cuenta y a "olvidé mi contraseña". Elegí según la etapa:
-
-**Mientras probás vos solo: desactivá la confirmación.**
-
-1. Andá a **Authentication > Sign In / Providers > Email**.
-2. Desactivá **Confirm email** y guardá.
-
-Con esto cualquiera puede registrarse con un mail ajeno, sin comprobar que es suyo. Sirve para probar, no para lanzar. "Olvidé mi contraseña" sigue sujeto al límite de arriba.
-
-**Antes de lanzar: conectá un servicio de mail propio.**
-
-1. Creá una cuenta en un servicio de envío, como [Resend](https://resend.com) o [Brevo](https://www.brevo.com). Te va a pedir verificar un dominio propio.
-2. Copiá los datos SMTP que te da ese servicio.
-3. En Supabase, andá a **Authentication > Emails > SMTP Settings**, activá **Custom SMTP** y pegalos.
-4. Volvé a activar **Confirm email**.
-5. Revisá en **Authentication > Rate Limits** cuántos mails por hora permitís.
-
-### B.3 Contraseñas
-
-La app pide 8 caracteres como mínimo. Para que el servidor exija lo mismo, poné **8** en **Authentication > Sign In / Providers > Email > Minimum password length**.
-
----
-
-## C. Login con Google
-
-Es opcional: sin esto funciona igual el ingreso con email, pero el botón "Continuar con Google" va a dar error. Necesitás tu **Project ID** de Supabase, que es la parte `abcdefgh` de la URL del paso A.3.
-
-### C.1 En Google
-
-1. Entrá a [console.cloud.google.com](https://console.cloud.google.com) y creá un proyecto llamado `PresupuestApp`.
-2. Buscá **Google Auth Platform** y completá **Branding**: nombre de la app, mail de soporte y mail de contacto.
-3. En **Audience**, elegí **External**.
-4. Andá a **Clients > Create client**:
-   - **Application type:** Web application.
-   - **Authorized JavaScript origins:** `https://presupuestapp.pages.dev` (tu dirección real del paso D).
-   - **Authorized redirect URIs:** `https://abcdefgh.supabase.co/auth/v1/callback`
-5. Tocá **Create** y copiá el **Client ID** y el **Client secret**.
-
-### C.2 En Supabase
-
-1. Andá a **Authentication > Sign In / Providers > Google** y activalo.
-2. Pegá el **Client ID** y el **Client secret**, y guardá.
-
-### C.3 Publicar la pantalla de Google
-
-Mientras la app esté en modo **Testing**, solo pueden entrar los mails que agregues en **Audience > Test users**. Cuando quieras abrirla a todos, tocá **Publish app** en esa misma pantalla.
-
----
-
-## D. Publicar en Cloudflare Pages
+## A. Publicar en Cloudflare Pages
 
 1. Entrá a [dash.cloudflare.com](https://dash.cloudflare.com) y creá una cuenta o iniciá sesión.
 2. Andá a **Compute > Workers & Pages > Create application**.
@@ -135,64 +31,65 @@ Mientras la app esté en modo **Testing**, solo pueden entrar los mails que agre
    | Build command | `npx next build` |
    | Build output directory | `out` |
 
-6. Abrí **Environment variables** y agregá las dos del paso A.3:
-
-   | Nombre | Valor |
-   | --- | --- |
-   | `NEXT_PUBLIC_SUPABASE_URL` | Tu URL de Supabase |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Tu clave `sb_publishable_...` |
-
-   La variable se llama `ANON_KEY` por costumbre, pero la clave publishable va ahí. Si tu proyecto muestra solamente la clave `anon` (empieza con `eyJ`), también sirve.
-
+6. **No cargues ninguna variable de entorno.** Si ves el apartado **Environment variables**, dejalo vacío.
 7. Tocá **Save and Deploy** y esperá unos minutos.
 
 La versión de Node no hay que cargarla: la toma del archivo `.node-version` del repo.
 
-Cuando termine, Cloudflare te muestra tu dirección, algo como `https://presupuestapp.pages.dev`. **Volvé al paso B.1 y al C.1 para cargarla.**
+Cuando termine, Cloudflare te muestra tu dirección, algo como `https://presupuestapp.pages.dev`. Abrila en el celular.
 
 **Para tener en cuenta:**
 
 - Cada `push` a `main` publica una versión nueva sola.
-- Las variables se graban en el momento de compilar. Si cambiás una, andá a **Deployments** y tocá **Retry deployment** en el último, o no va a tener efecto.
+- Si más adelante querés usar tu propio dominio, se agrega en **Custom domains** del mismo proyecto.
+- Cloudflare [permite uso comercial en el plan gratuito, según comparativas públicas](https://freetier-atlas.pages.dev/en/tools/cloudflare-pages/). Antes de cobrar por la app, confirmalo en las [condiciones de Cloudflare](https://developers.cloudflare.com/pages/platform/limits/).
 
 ---
 
-## E. Probar la PWA en un Android
+## B. Probar la app en un Android
 
 Usá Chrome y tu dirección `https://...pages.dev`.
 
-### E.1 Primera prueba, con internet
+### B.1 Primer uso
 
-1. Registrate y completá los tres pasos, con logo incluido.
-2. Creá un presupuesto con mano de obra y un material, y tocá **Generar PDF**.
-3. Comprobá que:
+1. Al abrirla tiene que aparecer **directo** la pantalla "¡Bienvenido a PresupuestApp!", sin pedir mail ni contraseña.
+2. Completá tu nombre, tu teléfono, elegí un oficio y tocá **Empezar**. El logo y el color son opcionales.
+3. Tiene que abrirse **Nuevo presupuesto**. Armá uno con un cliente, un trabajo y un material, y tocá **Armar PDF**.
+4. Comprobá que:
    - El número sea **Nº 1**.
-   - **Descargar** abra un PDF con tu logo, en el que **no** aparezcan tu costo ni tu markup.
-   - **Enviar por WhatsApp** abra el chat del cliente con el mensaje y el link. Abrí ese link: tiene que mostrar el PDF.
-   - **Compartir PDF** abra el menú de Android y puedas elegir WhatsApp.
+   - **Descargar PDF** baje un archivo con tu nombre y, si lo cargaste, tu logo. No tienen que figurar lo que te cuestan los materiales ni tu ganancia.
+   - **Enviar por WhatsApp** abra el menú de Android con el PDF adjunto, y puedas elegir WhatsApp y un contacto.
 
-### E.2 Instalarla
+### B.2 Instalarla
 
-1. En Chrome, abrí el menú **⋮** y tocá **Instalar app** o **Agregar a la pantalla principal**. También puede aparecer el botón **Instalar en el celular** en **Perfil**.
+1. En Chrome, abrí el menú **⋮** y tocá **Instalar app** o **Agregar a la pantalla principal**. También puede aparecer el botón **Poner la app en el celular** en **Ajustes**.
 2. Abrila desde el ícono: tiene que verse sin la barra de direcciones.
 
-### E.3 Prueba sin señal
+Instalarla ayuda a que el navegador no borre los datos si el celular se queda sin espacio.
 
-Es la prueba clave. Hacela después de haber abierto la app una vez con internet.
+### B.3 Prueba sin señal
+
+Hacela después de haber abierto la app una vez con internet.
 
 1. Poné el celular en **modo avión**.
-2. Abrí la app desde el ícono: tiene que cargar y avisar "Sin conexión".
-3. Creá un presupuesto con un cliente nuevo y generá el PDF: va a figurar como **Sin número**.
-4. Entrá a un trabajo existente y sacale una foto.
-5. Sacá el modo avión y volvé a abrir la app.
-6. Después de unos segundos, el presupuesto tiene que tener su número y la foto tiene que seguir ahí.
-7. Comprobá en Supabase, en **Table Editor > budgets**, que el presupuesto llegó.
+2. Abrí la app desde el ícono: tiene que cargar igual.
+3. Creá un presupuesto nuevo y armá el PDF: tiene que salir con su número, sin pedir internet.
+4. Entrá a un trabajo y sacale una foto.
+5. Cerrá y volvé a abrir la app: todo tiene que seguir ahí.
 
-El PDF generado sin señal queda sin número. Si todavía no lo mandaste, generalo de nuevo con señal.
+### B.4 Copia de seguridad
 
-### E.4 Si hay un problema con versiones viejas
+Probá esto antes de darle la app a alguien: es lo único que protege sus datos.
 
-Después de publicar una versión nueva, la app se actualiza sola la siguiente vez que se abre con internet; a veces hace falta cerrarla y abrirla de nuevo.
+1. Entrá a **Inicio > Ajustes** y tocá **Guardar copia**. Se baja un archivo `PresupuestApp-copia-AAAA-MM-DD.json`.
+2. Si aparece **Enviar copia**, tocalo para mandarlo a Drive, a WhatsApp o por mail.
+3. Para comprobar que sirve: desinstalá la app (o borrá los datos del sitio en Chrome), volvé a abrirla y, en la pantalla de bienvenida, tocá **Ya usaba la app: recuperar mi copia de seguridad** y elegí el archivo. Tienen que volver los presupuestos, los clientes, las fotos y el logo.
+
+Si pasó una semana sin copias, la app avisa en el inicio con un cartel que se puede dejar para más tarde.
+
+### B.5 Después de publicar una versión nueva
+
+La app se actualiza sola la siguiente vez que se abre con internet; a veces hace falta cerrarla y abrirla de nuevo. Los datos no se tocan.
 
 ---
 
@@ -200,13 +97,53 @@ Después de publicar una versión nueva, la app se actualiza sola la siguiente v
 
 | Qué ves | Causa probable | Qué hacer |
 | --- | --- | --- |
-| Pantalla de error al abrir la app, o no conecta | Variables mal cargadas | Revisá el paso D.6 y hacé **Retry deployment** |
-| "No pudimos cargar tu cuenta" | No se corrió el SQL, o te registraste antes de correrlo | Corré el SQL. Si ya te habías registrado, borrá ese usuario en **Authentication > Users** y registrate de nuevo |
-| `permission denied` en los registros de Supabase | Faltan los permisos del SQL | Volvé a correr `setup_completo.sql` |
-| No llega el mail, o aparece `Email address not authorized` | Límite del mail de Supabase | Paso B.2 |
-| El link del mail o Google te lleva a `localhost` | Falta la Site URL | Paso B.1 |
-| Google muestra `redirect_uri_mismatch` | URI mal cargada | Revisá el paso C.1: tiene que terminar en `/auth/v1/callback` |
-| Google muestra `access_denied` | App en modo Testing | Agregá tu mail en **Test users** o publicala (C.3) |
-| El build de Cloudflare falla | Configuración de compilación | Revisá el cuadro del paso D.5 y leé el final del log |
+| El build de Cloudflare falla | Configuración de compilación | Revisá el cuadro del paso A.5 y leé el final del log |
+| Página en blanco o error 404 | Carpeta de salida mal puesta | Tiene que ser `out` |
+| Pide instalar o no aparece "Instalar app" | Chrome decide cuándo ofrecerlo | Usá el menú **⋮ > Agregar a la pantalla principal** |
+| Se perdieron los datos | Se borraron los datos del navegador o se desinstaló la app | Recuperá la copia (B.4) |
+| El PDF no se adjunta en WhatsApp | El navegador no permite compartir archivos | La app descarga el PDF y abre el chat: adjuntalo desde ahí |
 
-**Supabase gratis se pausa:** según [guías de terceros](https://makerkit.dev/blog/saas/supabase-pricing), tras 7 días sin actividad. Si la app deja de sincronizar, entrá al panel y reactivá el proyecto. Con usuarios reales conviene el plan Pro.
+---
+
+## C. Más adelante (opcional): cuenta y respaldo en la nube
+
+> **Esto no hace falta para lanzar y hoy no está conectado a la app.** El código de login, la sincronización y el SQL están guardados en el repo, pero la app no los usa: nunca muestra un login, y la nube está apagada con el interruptor `CLOUD_SYNC` en `src/lib/config.ts`. Activarlo requiere además trabajo de programación (agregar el login al flujo y conectar la sincronización) que todavía no se hizo ni se probó.
+>
+> Lo que sigue deja preparado el lado de Supabase para ese momento.
+
+### C.1 Crear el proyecto en Supabase y correr el SQL
+
+1. Entrá a [supabase.com](https://supabase.com), creá un proyecto llamado `presupuestapp` y elegí la región **South America (São Paulo)**. Dejá la **Data API** activada.
+2. Hacelo **antes de tener usuarios**. En el repo de GitHub, abrí `supabase/setup_completo.sql` y copiá todo con **Copy raw file**.
+3. En Supabase, abrí **SQL Editor**, pegá todo y tocá **Run**. Se puede correr más de una vez sin romper nada. Abajo tiene que aparecer **`oficios: 45`** y **`buckets: 3`**.
+4. Copiá la **URL del proyecto** (`https://abcdefgh.supabase.co`, sin barra final ni `/rest/v1`) y la **Publishable key** (`sb_publishable_...`) desde **Connect** o **Project Settings > API Keys**.
+
+**Regla de oro:** solo se usa la clave **publishable**, que está pensada para ir en la app. La clave **secret** o **service_role** no se usa nunca: no la pegues en Cloudflare, en el código ni en un chat.
+
+### C.2 Cargar las variables en Cloudflare
+
+Cuando la parte de código esté lista: en tu proyecto de Cloudflare, **Settings > Variables and Secrets**, agregá:
+
+| Nombre | Valor |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Tu URL de Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Tu clave `sb_publishable_...` |
+
+Las variables se graban al compilar: después de cambiarlas, andá a **Deployments** y tocá **Retry deployment**.
+
+### C.3 Auth
+
+- **URL Configuration:** en **Authentication > URL Configuration**, poné tu dirección `https://...pages.dev` como **Site URL** y agregá `https://...pages.dev/**` en **Redirect URLs**.
+- **Mails:** el servicio que trae Supabase [manda 2 mails por hora y solo a personas del equipo del proyecto](https://supabase.com/docs/guides/auth/auth-smtp). Para probar, desactivá **Confirm email** (**Authentication > Sign In / Providers > Email**). Antes de lanzar con usuarios reales, conectá un SMTP propio (por ejemplo Resend o Brevo) en **Authentication > Emails > SMTP Settings** y volvé a activarlo.
+- **Contraseña mínima:** poné **8** en **Authentication > Sign In / Providers > Email**, porque la app pide 8.
+
+### C.4 Login con Google
+
+1. En [Google Cloud Console](https://console.cloud.google.com), creá un proyecto, completá **Google Auth Platform > Branding** y elegí **External** en **Audience**.
+2. En **Clients > Create client**: tipo **Web application**, con tu dirección `https://...pages.dev` en **Authorized JavaScript origins** y `https://TU_PROJECT_ID.supabase.co/auth/v1/callback` en **Authorized redirect URIs**. Copiá el **Client ID** y el **Client secret**.
+3. En Supabase, **Authentication > Sign In / Providers > Google**: activalo y pegá los dos datos.
+4. Mientras la app de Google esté en modo **Testing**, solo entran los mails de **Test users**. Para abrirla a todos, tocá **Publish app**.
+
+### C.5 Cosas que conviene saber
+
+Según [guías de terceros](https://makerkit.dev/blog/saas/supabase-pricing), el plan gratuito de Supabase pausa el proyecto tras 7 días sin actividad. Con usuarios reales conviene el plan Pro.
